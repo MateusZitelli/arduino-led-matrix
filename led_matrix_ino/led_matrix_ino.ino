@@ -5,7 +5,7 @@
 const int latchPin = 8;
 const int clockPin = 13;
 const int dataPin = 12;
-
+char bin[MATRIX_SIZE] = {0,0,0,0,0,0,0,0,0,0};
 
 int matrix[MATRIX_SIZE][MATRIX_SIZE] = {
   {1,0,0,0,0,0,0,0,0,1},
@@ -37,15 +37,9 @@ void loop () {
   checkSerial();
 }
 
-String intToBin(int value) {
-  String str;
-  String initialBinStr = String(value, BIN);
-  int zeros = MATRIX_SIZE - initialBinStr.length();
-  
-  for (int i = 0; i < zeros; i++)
-    str = str + '0'; 
-  
-  return str + initialBinStr;
+void intToBin(int value, char * str) {
+  for (int i = MATRIX_SIZE - 1; i >= 0; i--, value >>= 1)
+    str[i] = (value & 1) + '0';
 }
 
 int hexToInt(char * str) {
@@ -60,7 +54,6 @@ int hexToInt(char * str) {
  */
 void checkSerial() {
   char buffer[N_BYTES];
-  String bin;
   int counter;
   int i;
   int j;
@@ -73,15 +66,11 @@ void checkSerial() {
       buffer[counter++] = Serial.read();
        
       if (counter >= N_BYTES) {
-        bin = intToBin(hexToInt(buffer));
+        intToBin(hexToInt(buffer), bin);
          
-        for(i = 0; i < MATRIX_SIZE; i++) {
-          matrix[j][i] = bin.charAt(i) - 48; 
-          Serial.print(matrix[i][j]);
-        }
+        for(i = 0; i < MATRIX_SIZE; i++)
+          matrix[j][i] = bin[i] - 48;
         
-        Serial.println();
-
         counter = 0;
         j++;
       }
