@@ -1,81 +1,81 @@
-#include <stdio.h>
+#define N_BYTES 3
 #define MATRIX_SIZE 10
+#define TOTAL_BYTES MATRIX_SIZE * N_BYTES
 
-//Pin connected to latch pin (ST_CP) of 74HC595
 const int latchPin = 8;
-//Pin connected to clock pin (SH_CP) of 74HC595
 const int clockPin = 13;
-////Pin connected to Data in (DS) of 74HC595
 const int dataPin = 12;
+char bin[MATRIX_SIZE] = {0,0,0,0,0,0,0,0,0,0};
 
-int matrix[MATRIX_SIZE][MATRIX_SIZE];
+int matrix[MATRIX_SIZE][MATRIX_SIZE] = {
+  {1,0,0,0,0,0,0,0,0,1},
+  {0,1,0,0,0,0,0,0,1,0},
+  {0,0,1,0,0,0,0,1,0,0},
+  {0,0,0,1,0,0,1,0,0,0},
+  {0,0,0,0,1,1,0,0,0,0},
+  {0,0,0,0,1,1,0,0,0,0},
+  {0,0,0,1,0,0,1,0,0,0},
+  {0,0,1,0,0,0,0,1,0,0},
+  {0,1,0,0,0,0,0,0,1,0},
+  {1,0,0,0,0,0,0,0,0,1},
+};
 
 void setup() {
   int i,j;
-  //set pins to output because they are addressed in the main loop
+
+  // setting pins to output because they are
+  // addressed in the main loop
   pinMode(latchPin, OUTPUT);
   pinMode(dataPin, OUTPUT);  
   pinMode(clockPin, OUTPUT);
   Serial.begin(9600);
   Serial.println("reset");
-  // Initialize matrix
-  for(j = 0; j < MATRIX_SIZE; j++){
-    for(i = 0; i < MATRIX_SIZE; i++){
-      matrix[j][i] = (i == j || i == MATRIX_SIZE - j - 1);
-    }
-  }
 }
 
-void loop() {
+void loop () {
   show();
   checkSerial();
 }
 
-void checkSerial(){
-  // Check in the serial buffer for 100 bytes to describe the matrix
-  int i, j;
-  int column = 0;
-  int line = 0;
-  int readSerial = 1;
-  byte dataByte;
-  // 13 bytes to store 100 bits
-  if(Serial.available() >= 13){
-    while(readSerial){
-      dataByte = Serial.read();
-      Serial.write(dataByte);
-      for(i = 0; i < 8; i++){
-        matrix[line][column++] = dataByte & (1 << i);
-        if(column >= MATRIX_SIZE){
-          column = 0;
-          line++;
-          if(line >= MATRIX_SIZE){
-            readSerial = 0;
-            break; 
-          }
-        }
-      }
-    }
-  }
+void intToBin(int value, char * str) {
+  for (int i = MATRIX_SIZE - 1; i >= 0; i--, value >>= 1)
+    str[i] = (value & 1) + '0';
 }
 
-void show(){
-  // Turn on the led matrix based on the internal matrix representation.
-  // The MATRIX_SIZE LSB sended to the shift register represents the lines
-  // states and the next MATRIX_SIZE bits reflect the columns states.
-  // To show the matrix, it's multiplexed line by line, seing that all the leds
-  // in the same line are connected by their anodes and the columns by the
-  // cathodes, each line is activated setting it to an off state while the
-  // other lines are on. With one line activated a specific led from it could be
-  // turned on just aplying current on their cathod column.
-  int i, j;
-  // An int with MATRIX_SIZE bits equal 1
-  int anodesMask = 1 << (MATRIX_SIZE) - 1;
-  long data;
-  for(j = 0; j < MATRIX_SIZE; j++){
-    digitalWrite(latchPin, 0);
-    shiftOut(dataPin, clockPin, j);
-    digitalWrite(latchPin, 1);
-  }
+int hexToInt(char * str) {
+  int number = (int) strtol(str, NULL, 16);
+  
+  return number;
+}
+
+/**
+ * Checks the Serial then mutates the matrix
+ * state.
+ */
+void checkSerial() {
+  char buffer[N_BYTES];
+  int counter;
+  int i;
+  int j;
+  
+  if (Serial.available() >= TOTAL_BYTES) {
+    j = 0;
+    counter = 0;
+    
+    while (Serial.available()) {
+      buffer[counter++] = Serial.read();
+       
+      if (counter >= N_BYTES) {
+        intToBin(hexToInt(buffer), bin);
+         
+        for(i = 0; i < MATRIX_SIZE; i++)
+          matrix[j][i] = bin[i] - 48;
+        
+        counter = 0;
+        j++;
+      }
+    }
+  } 
 }
 
 void shiftBit(int myDataPin, int myClockPin, byte b){
@@ -88,14 +88,15 @@ void shiftBit(int myDataPin, int myClockPin, byte b){
   digitalWrite(myDataPin, 0);
 }
 
+ /**
+  * This shifts 8 bits out MSB first, on the
+  * rising edge of the clock, clock idles low
+  */
 void shiftOut(int myDataPin, int myClockPin, int line) {
-  // This shifts 8 bits out MSB first,
-  //on the rising edge of the clock,
-  //clock idles low
-
   //internal function setup
   int i=0;
   int pinState;
+
   pinMode(myClockPin, OUTPUT);
   pinMode(myDataPin, OUTPUT);
   
@@ -105,15 +106,42 @@ void shiftOut(int myDataPin, int myClockPin, int line) {
   shiftBit(myDataPin, myClockPin, line != 9);
   
   // Set the columns states
-  for (i= MATRIX_SIZE - 1; i >= 0; i--)  {
+  for (i= MATRIX_SIZE - 1; i >= 0; i--)
     shiftBit(myDataPin, myClockPin, matrix[line][i]); 
-  }
   
   //Set the remaining lines
-  for(i= MATRIX_SIZE - 2; i >= 0; i--){
+  for(i= MATRIX_SIZE - 2; i >= 0; i--)
     shiftBit(myDataPin, myClockPin, i != line);
-  }
 
   //stop shifting
   digitalWrite(myClockPin, 0);
+}
+
+/** 
+ * Turns on the led matrix based on the internal
+ * matrix representation (global var). The
+ * MATRIX_SIZE LSB sended to the shift register
+ * represents the lines states and the next
+ * MATRIX_SIZE bits reflect the columns states.
+ * To show the matrix, it's multiplexed line by
+ * line, seing that all the leds in the same
+ * line are connected by their anodes and the
+ * columns by the cathodes, each line is
+ * activated setting it to an off state while
+ * the other lines are on. With one line
+ * activated a specific led from it could be
+ * turned on just aplying current on their
+ * cathod column.
+ */
+void show(){
+  // An int with MATRIX_SIZE bits equal 1
+  int anodesMask = 1 << (MATRIX_SIZE) - 1;
+  int i, j;
+  long data;
+
+  for(j = 0; j < MATRIX_SIZE; j++){
+    digitalWrite(latchPin, 0);
+    shiftOut(dataPin, clockPin, j);
+    digitalWrite(latchPin, 1);
+  }
 }
